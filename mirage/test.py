@@ -1,13 +1,13 @@
 import os
 import argparse
 from models import get_model
-from data import load_config, get_dataset
+from data import load_config, get_dataset, custom_dataset
 from torch.utils.data import DataLoader
 from utils import load_model_checkpoint, test_model, test_multimodal_model, save_metrics
+from transformers import Blip2Processor
 
 
-
-def main(mode, model_class, checkpoint=None):
+def main(mode, model_class, checkpoint=None, txt_path=None, image_folder=None):
 
     if mode == "multimodal":
         # Load configuration
@@ -25,7 +25,12 @@ def main(mode, model_class, checkpoint=None):
         print(f"Loaded text model checkpoint from {checkpoint_path} with threshold: {best_threshold}")
 
         # Load all test datasets
-        test_datasets = get_dataset(config, test_set='all')
+        if txt_path and image_folder:
+            processor = Blip2Processor.from_pretrained("Salesforce/blip2-flan-t5-xl")
+            dataset = custom_dataset.TxtImageTextDataset(txt_path, image_folder, processor)
+            test_datasets = [(dataset, os.path.basename(txt_path))]
+        else:
+            test_datasets = get_dataset(config, test_set='all')
 
         # Set path for saving metrics 
         metrics_save_path = f"results/multimodal/mirage.jsonl"
@@ -55,7 +60,12 @@ def main(mode, model_class, checkpoint=None):
         print(f"Loaded model checkpoint from {checkpoint_path} with threshold: {best_threshold}")
             
         # Load all test datasets
-        test_datasets = get_dataset(config, test_set='all')
+        if txt_path and image_folder:
+            processor = Blip2Processor.from_pretrained("Salesforce/blip2-flan-t5-xl")
+            dataset = custom_dataset.TxtImageTextDataset(txt_path, image_folder, processor)
+            test_datasets = [(dataset, os.path.basename(txt_path))]
+        else:
+            test_datasets = get_dataset(config, test_set='all')
 
         # Set path for saving metrics 
         metrics_save_path = f"results/{mode}/{checkpoint_name}.jsonl"
@@ -95,6 +105,18 @@ if __name__ == "__main__":
         required=False,
         help="Path to a specific model checkpoint file. Overrides config file path if provided."
     )
+    parser.add_argument(
+        '--txt_path',
+        type=str,
+        required=False,
+        help="Path to .txt file containing image names (without .jpg) and optional text"
+    )
+    parser.add_argument(
+        '--image_folder',
+        type=str,
+        required=False,
+        help="Folder containing the corresponding .jpg images"
+    )
 
     args = parser.parse_args()
-    main(args.mode, args.model_class, args.checkpoint)
+    main(args.mode, args.model_class, args.checkpoint, args.txt_path, args.image_folder)
