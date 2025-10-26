@@ -9,6 +9,10 @@ import torch_geometric.transforms as T
 from torch_geometric.nn import DenseSAGEConv, dense_diff_pool
 from torch.utils.data import random_split
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
 from utils.data_loader import *
 from utils.eval_helper import *
 
@@ -132,7 +136,7 @@ def test(loader):
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=777, help='random seed')
 # hyper-parameters
-parser.add_argument('--dataset', type=str, default='politifact', help='[politifact, gossipcop]')
+parser.add_argument('--dataset', type=str, default='gossipcop', help='[politifact, gossipcop]')
 parser.add_argument('--batch_size', type=int, default=128, help='batch size')
 parser.add_argument('--lr', type=float, default=0.001, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=0.001, help='weight decay')
@@ -181,3 +185,5 @@ for epoch in tqdm(range(args.epochs)):
 [acc, f1_macro, f1_micro, precision, recall, auc, ap], test_loss = test(test_loader)
 print(f'Test set results: acc: {acc:.4f}, f1_macro: {f1_macro:.4f}, f1_micro: {f1_micro:.4f}, '
 	  f'precision: {precision:.4f}, recall: {recall:.4f}, auc: {auc:.4f}, ap: {ap:.4f}')
+
+torch.save(model.state_dict(), 'gnncl_weights_gossipcop.pth')

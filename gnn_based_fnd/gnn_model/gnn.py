@@ -10,6 +10,9 @@ from torch_geometric.nn import GCNConv, SAGEConv, GATConv, DataParallel
 from torch.utils.data import random_split
 from torch_geometric.data import DataLoader, DataListLoader
 
+import sys
+import os
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
 from utils.data_loader import *
 from utils.eval_helper import *
@@ -92,7 +95,7 @@ parser.add_argument('--seed', type=int, default=777, help='random seed')
 parser.add_argument('--device', type=str, default='cuda:0', help='specify cuda devices')
 
 # hyper-parameters
-parser.add_argument('--dataset', type=str, default='politifact', help='[politifact, gossipcop]')
+parser.add_argument('--dataset', type=str, default='gossipcop', help='[politifact, gossipcop]')
 parser.add_argument('--batch_size', type=int, default=128, help='batch size')
 parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
 parser.add_argument('--weight_decay', type=float, default=0.01, help='weight decay')
@@ -105,6 +108,12 @@ parser.add_argument('--feature', type=str, default='bert', help='feature type, [
 parser.add_argument('--model', type=str, default='sage', help='model type, [gcn, gat, sage]')
 
 args = parser.parse_args()
+
+if torch.cuda.is_available():
+    args.device = torch.device(args.device)
+else:
+    args.device = torch.device('cpu')
+
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
 	torch.cuda.manual_seed(args.seed)
@@ -173,3 +182,5 @@ if __name__ == '__main__':
 	[acc, f1_macro, f1_micro, precision, recall, auc, ap], test_loss = compute_test(test_loader, verbose=False)
 	print(f'Test set results: acc: {acc:.4f}, f1_macro: {f1_macro:.4f}, f1_micro: {f1_micro:.4f}, '
 		  f'precision: {precision:.4f}, recall: {recall:.4f}, auc: {auc:.4f}, ap: {ap:.4f}')
+
+torch.save(model.state_dict(), 'gnn_weights_gossipcop.pth')
