@@ -26,17 +26,35 @@ class FakedditGraphBuilder:
             min_df=2,
             max_df=0.8
         )
-        
-    def load_dataset(self, file_path, sample_size=None):
+    
+    def load_dataset(self, file_path, labels_file_path=None):
         """
-        Load the Fakeddit TSV dataset
+        Load the Fakeddit TSV dataset and filter based on labels file
+        
+        Args:
+            file_path: Path to the main dataset TSV file
+            labels_file_path: Path to the needed file containing IDs to include
         """
         print(f"Loading dataset from {file_path}")
         df = pd.read_csv(file_path, sep='\t')
         
-        if sample_size and sample_size < len(df):
-            df = df.sample(sample_size)
-            print(f"Sampled {sample_size} records")
+        # If labels file is provided, filter dataset to only include those IDs
+        if labels_file_path:
+            print(f"Loading labels from {labels_file_path}")
+            labels_df = pd.read_csv(labels_file_path, sep='\t')
+            target_ids = labels_df['id'].tolist()
+            
+            # Filter main dataset to only include IDs from labels file
+            initial_count = len(df)
+            df = df[df['id'].isin(target_ids)]
+            final_count = len(df)
+            
+            print(f"Filtered dataset: {initial_count} -> {final_count} rows")
+            print(f"IDs found in main dataset: {final_count}/{len(target_ids)}")
+            
+            # Add the initial labels to the main dataframe
+            labels_dict = dict(zip(labels_df['id'], labels_df['label']))
+            df['initial_label'] = df['id'].map(labels_dict)
         
         return df
     
@@ -98,7 +116,8 @@ class FakedditGraphBuilder:
                 'label_2_way': row.get('2_way_label', ''),
                 'label_3_way': row.get('3_way_label', ''),
                 'label_6_way': row.get('6_way_label', ''),
-                'combined_text': row.get(text_column, '')
+                'combined_text': row.get(text_column, ''),
+                'initial_label': row.get('initial_label', '')
             }
             self.graph.add_node(node_id, **node_attributes)
         
@@ -175,17 +194,23 @@ class FakedditGraphBuilder:
         labels_2_way = [data.get('label_2_way', '') for _, data in self.graph.nodes(data=True)]
         labels_3_way = [data.get('label_3_way', '') for _, data in self.graph.nodes(data=True)]
         labels_6_way = [data.get('label_6_way', '') for _, data in self.graph.nodes(data=True)]
+        initial_labels = [data.get('initial_label', '') for _, data in self.graph.nodes(data=True)]
         
         print("\nLabel Distribution:")
         print(f"2-way labels: {pd.Series(labels_2_way).value_counts().to_dict()}")
         print(f"3-way labels: {pd.Series(labels_3_way).value_counts().to_dict()}")
         print(f"6-way labels: {pd.Series(labels_6_way).value_counts().to_dict()}")
+        
+        # Analyze initial labels distribution
+        if any(initial_labels):
+            print(f"initial labels stats - Min: {min([x for x in initial_labels if x != '']):.3f}, "
+                  f"Max: {max([x for x in initial_labels if x != '']):.3f}, "
+                  f"Mean: {np.mean([x for x in initial_labels if x != '']):.3f}")
     
     def visualize_graph(self, max_nodes_to_plot=200, figsize=(15, 12)):
         """
         Visualize a subset of the graph with node colors based on labels
         """
-
         if len(self.graph) == 0:
             print("Graph is empty. Build graph first.")
             return
@@ -319,16 +344,25 @@ def main():
     Main function to demonstrate the graph building process
     """
     # Initialize graph builder with adjustable parameters
+    similarity_threshold = float(input("Enter similarity threshold: "))
     graph_builder = FakedditGraphBuilder(
-        similarity_threshold=0.3,  # Adjust based on your needs (0.3-0.6 works well)
-        max_features=30000
+        similarity_threshold,  # Adjust based on your needs (0.3-0.6 works well)
+        max_features=300000
     )
     
-    # Load and preprocess the dataset
-    df = graph_builder.load_dataset('multimodal_train.tsv', sample_size=700)  # Adjust sample_size as needed
+    # Load and preprocess the dataset with filtering based on file
+    df = graph_builder.load_dataset(
+        'multimodal_train.tsv', 
+        labels_file_path='mock_predictions.tsv'  # This will filter the dataset
+    )
     
     print(f"Dataset loaded with {len(df)} rows")
     print("Columns:", df.columns.tolist())
+    
+    # Check if we have data to process
+    if len(df) == 0:
+        print("No data found after filtering. Please check if the IDs in file exist in database")
+        return
     
     # Preprocess text
     df = graph_builder.preprocess_text(df)
@@ -344,7 +378,7 @@ def main():
     graph_builder.find_communities()
     
     # Visualize graph
-    graph_builder.visualize_graph(max_nodes_to_plot=1000)
+    graph_builder.visualize_graph(max_nodes_to_plot=100000)
     
     # Save graph
     graph_builder.save_graph('fakeddit_multimodal_graph.graphml')
