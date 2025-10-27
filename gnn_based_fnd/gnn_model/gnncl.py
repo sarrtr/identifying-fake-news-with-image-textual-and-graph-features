@@ -185,5 +185,3 @@ for epoch in tqdm(range(args.epochs)):
 [acc, f1_macro, f1_micro, precision, recall, auc, ap], test_loss = test(test_loader)
 print(f'Test set results: acc: {acc:.4f}, f1_macro: {f1_macro:.4f}, f1_micro: {f1_micro:.4f}, '
 	  f'precision: {precision:.4f}, recall: {recall:.4f}, auc: {auc:.4f}, ap: {ap:.4f}')
-
-torch.save(model.state_dict(), 'gnncl_weights_gossipcop.pth')
