@@ -1,4 +1,10 @@
-sdml/sdml_multimodal.pt
+sdml/*.pt
+fakeddit_dataset/images
+fakeddit_dataset/images_100
+fakeddit_dataset/images_my
+fakeddit_dataset/text
+fakeddit_dataset/text_100
+fakeddit_dataset/text_my
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

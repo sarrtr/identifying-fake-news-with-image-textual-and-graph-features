@@ -7,7 +7,8 @@ import random
 import re
 
 FILE_NAME = 'data/multimodal_test_public.tsv'
-MAX_SAMPLES = 100
+MAX_SAMPLES = 1000000000000
+START_IDX = 41315+5418
 
 df = pd.read_csv(FILE_NAME, sep="\t")
 df = df.fillna('')
@@ -29,7 +30,6 @@ def imgur_to_direct(url):
         if match:
             return f"https://i.imgur.com/{match.group(1)}.jpg"
     return url
-
 
 def download_with_retry(url, filename, max_retries=2, backoff_factor=2, min_delay=2, max_delay=5):
     url = imgur_to_direct(url)
@@ -60,33 +60,49 @@ def download_with_retry(url, filename, max_retries=2, backoff_factor=2, min_dela
     return False
 
 
-pbar = tqdm(total=len(df))
+# --- Resume logic ---
+# Determine already downloaded images (to skip)
+downloaded_ids = {os.path.splitext(f)[0] for f in os.listdir("images") if f.endswith(".jpg")}
+
+# Open file in append mode to continue writing
+text_path = "text/text.txt"
+file_exists = os.path.exists(text_path)
+
+pbar = tqdm(total=len(df) - START_IDX)
 download_counter = 0
 
-with open("text/text.txt", "w", encoding="utf-8") as text_file:
-    text_file.write("id\tclean_title\t2_way_label\n")
+with open(text_path, "a" if file_exists else "w", encoding="utf-8") as text_file:
+    if not file_exists:
+        text_file.write("id\tclean_title\t2_way_label\n")
 
-    for _, row in df.iterrows():
+    for idx, row in df.iloc[START_IDX:].iterrows():
         if download_counter >= MAX_SAMPLES:
             break
+
+        image_id = str(row.get("id", "")).strip()
+        if not image_id:
+            continue
+        if image_id in downloaded_ids:
+            # already downloaded
+            pbar.update(1)
+            continue
 
         image_url = str(row.get("image_url", "")).strip()
         if (
             row.get("hasImage", False)
             and image_url
             and image_url.lower() != "nan"
-            and row.get("id", "")
             and row.get("clean_title", "")
         ):
-            out_path = os.path.join("images", f"{row['id']}.jpg")
-
+            out_path = os.path.join("images", f"{image_id}.jpg")
             success = download_with_retry(image_url, out_path)
             if success:
-                text_file.write(f"{row['id']}\t{row['clean_title']}\t{row['2_way_label']}\n")
+                text_file.write(f"{image_id}\t{row['clean_title']}\t{row['2_way_label']}\n")
+                text_file.flush()
                 download_counter += 1
 
         pbar.update(1)
 
 pbar.close()
 print("done")
-print(f"{download_counter} samples downloaded successfully.")
+print(f"{download_counter} new samples downloaded successfully (from idx={START_IDX}).")
