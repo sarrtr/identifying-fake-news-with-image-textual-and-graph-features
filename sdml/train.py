@@ -60,48 +60,6 @@ class MultimodalNewsDataset(Dataset):
         return input_ids, attention_mask, image, label
 
 
-# class SDMLMultimodal(nn.Module):
-#     def __init__(self, 
-#                  text_model='bert-base-uncased', 
-#                  vision_model='google/vit-base-patch16-224-in21k',
-#                  num_classes=2):
-#         super().__init__()
-        
-#         # --- Text Encoder (pretrained BERT) ---
-#         self.text_encoder = BertModel.from_pretrained(text_model)
-#         text_embed_dim = self.text_encoder.config.hidden_size
-#         self.text_proj = nn.Linear(text_embed_dim, 512)
-        
-#         # --- Vision Encoder (pretrained ViT) ---
-#         self.vision_encoder = ViTModel.from_pretrained(vision_model)
-#         img_embed_dim = self.vision_encoder.config.hidden_size
-#         self.image_proj = nn.Linear(img_embed_dim, 512)
-        
-#         # --- Classifier ---
-#         self.classifier = nn.Sequential(
-#             nn.Linear(512 * 2, 512),
-#             nn.ReLU(),
-#             nn.Dropout(0.2),
-#             nn.Linear(512, num_classes)
-#         )
-
-#     def forward(self, input_ids, attention_mask, images):
-#         # --- Text branch ---
-#         text_out = self.text_encoder(input_ids=input_ids, attention_mask=attention_mask)
-#         text_cls = text_out.last_hidden_state[:, 0, :]  # CLS token embedding
-#         text_feat = self.text_proj(text_cls)
-
-#         # --- Vision branch ---
-#         img_out = self.vision_encoder(images)
-#         img_cls = img_out.last_hidden_state[:, 0, :]  # CLS token embedding
-#         img_feat = self.image_proj(img_cls)
-
-#         # --- Fusion + classification ---
-#         fused = torch.cat([text_feat, img_feat], dim=-1)
-#         logits = self.classifier(fused)
-#         return logits
-    
-
 class CrossAttentionFusion(nn.Module):
     """A lightweight cross-attention block between text and image embeddings."""
     def __init__(self, embed_dim=512, num_heads=8):
@@ -188,7 +146,6 @@ def train_epoch(model, loader, optimizer, criterion, device):
     model.train()
     total_loss, correct = 0, 0
 
-    # tqdm progress bar for training
     progress_bar = tqdm(loader, desc="Training", leave=False)
 
     for input_ids, attention_mask, images, labels in progress_bar:
@@ -204,7 +161,6 @@ def train_epoch(model, loader, optimizer, criterion, device):
         total_loss += loss.item()
         correct += (logits.argmax(1) == labels).sum().item()
 
-        # Update progress bar dynamically
         progress_bar.set_postfix({
             'loss': f'{loss.item():.4f}',
             'acc': f'{100 * correct / ((progress_bar.n + 1) * loader.batch_size):.2f}%'
@@ -219,7 +175,6 @@ def evaluate(model, loader, criterion, device):
     model.eval()
     total_loss, correct = 0, 0
 
-    # tqdm progress bar for evaluation
     progress_bar = tqdm(loader, desc="Evaluating", leave=False)
 
     with torch.no_grad():
@@ -243,89 +198,6 @@ def evaluate(model, loader, criterion, device):
     return avg_loss, avg_acc
 
 
-# def train_epoch(model, loader, optimizer, criterion, device):
-#     model.train()
-#     total_loss, correct = 0, 0
-
-#     # Wrap the loader with tqdm for progress bar
-#     progress_bar = tqdm(loader, desc="Training", leave=False)
-
-#     for _, _, images, labels in progress_bar:
-#         images, labels = images.to(device), labels.to(device)
-
-#         optimizer.zero_grad()
-#         logits = model(images)
-#         loss = criterion(logits, labels)
-#         loss.backward()
-#         optimizer.step()
-
-#         total_loss += loss.item()
-#         correct += (logits.argmax(1) == labels).sum().item()
-
-#         # Update tqdm description dynamically
-#         progress_bar.set_postfix({
-#             'loss': f'{loss.item():.4f}',
-#             'acc': f'{100 * correct / ((progress_bar.n + 1) * loader.batch_size):.2f}%'
-#         })
-
-#     return total_loss / len(loader), correct / len(loader.dataset)
-
-
-# def evaluate(model, loader, criterion, device):
-#     model.eval()
-#     total_loss, correct = 0, 0
-
-#     progress_bar = tqdm(loader, desc="Evaluating", leave=False)
-
-#     with torch.no_grad():
-#         for _, _, images, labels in progress_bar:
-#             images, labels = images.to(device), labels.to(device)
-#             logits = model(images)
-#             loss = criterion(logits, labels)
-
-#             total_loss += loss.item()
-#             correct += (logits.argmax(1) == labels).sum().item()
-
-#             progress_bar.set_postfix({
-#                 'loss': f'{loss.item():.4f}',
-#                 'acc': f'{100 * correct / ((progress_bar.n + 1) * loader.batch_size):.2f}%'
-#             })
-
-#     return total_loss / len(loader), correct / len(loader.dataset)
-
-
-# class VisionOnlyModel(nn.Module):
-#     def __init__(self, num_classes=2, pretrained=True):
-#         super().__init__()
-
-#         if pretrained:
-#             # Use pretrained weights (recommended)
-#             self.vision_encoder = ViTModel.from_pretrained('google/vit-base-patch16-224-in21k')
-#             embed_dim = self.vision_encoder.config.hidden_size
-#         else:
-#             # Or use your custom ViT from model.vit
-#             from model.vit import VisionTransformer
-#             self.vision_encoder = VisionTransformer(img_size=224, patch_size=8, embed_dim=768)
-#             embed_dim = 768
-
-#         # Classifier head
-#         self.classifier = nn.Sequential(
-#             nn.Linear(embed_dim, 512),
-#             nn.ReLU(),
-#             nn.Dropout(0.5),
-#             nn.Linear(512, num_classes)
-#         )
-
-#     def forward(self, images):
-#         out = self.vision_encoder(images)
-#         if hasattr(out, 'last_hidden_state'):  # Hugging Face ViT
-#             cls_token = out.last_hidden_state[:, 0, :]
-#         else:  # your custom ViT
-#             cls_token = out[:, 0, :]
-#         logits = self.classifier(cls_token)
-#         return logits
-
-
 
 if __name__ == "__main__":
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -338,17 +210,6 @@ if __name__ == "__main__":
     indices = list(range(len(dataset)))
     print(len(dataset))
     train_idx, val_idx = train_test_split(indices, test_size=0.2, random_state=42, stratify=dataset.data['2_way_label'])
-    # total_samples = min(5000, len(dataset))
-    # all_indices = list(range(len(dataset)))
-    # random.seed(42)
-    # subset_indices = random.sample(all_indices, total_samples)
-
-    # train_idx, val_idx = train_test_split(
-    #     subset_indices, 
-    #     test_size=0.2, 
-    #     random_state=42, 
-    #     stratify=dataset.data.loc[subset_indices, '2_way_label']
-    # )
 
     train_set = Subset(dataset, train_idx)
     val_set = Subset(dataset, val_idx)
@@ -372,35 +233,8 @@ if __name__ == "__main__":
     )
     criterion = nn.CrossEntropyLoss()
 
-    # model = VisionOnlyModel(num_classes=2, pretrained=False).to(device)
-    # optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
-    # criterion = nn.CrossEntropyLoss()
-
     train_losses, val_losses = [], []
     train_accs, val_accs = [], []
-
-    # for epoch in range(10):
-    #     if epoch == 3:
-    #         # ---- Unfreeze pretrained encoders ----
-    #         for param in model.text_encoder.parameters():
-    #             param.requires_grad = True
-    #         for param in model.vision_encoder.parameters():
-    #             param.requires_grad = True
-    #         print(f"Unfroze pretrained encoders at epoch {epoch+1}")
-
-    #         optimizer = torch.optim.AdamW([
-    #             {'params': model.text_encoder.parameters(), 'lr': 1e-5},
-    #             {'params': model.vision_encoder.parameters(), 'lr': 1e-5},
-    #             {'params': list(model.text_proj.parameters()) + 
-    #                     list(model.image_proj.parameters()) + 
-    #                     list(model.classifier.parameters()), 'lr': 2e-4}
-    #         ])
-
-
-
-    #     train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
-    #     val_loss, val_acc = evaluate(model, val_loader, criterion, device)
-    #     print(f"Epoch {epoch+1}: train_loss={train_loss:.4f}, train_acc={train_acc:.4f} | val_loss={val_loss:.4f}, val_acc={val_acc:.4f}")
 
 
     for epoch in range(3):
@@ -413,7 +247,7 @@ if __name__ == "__main__":
         val_accs.append(val_acc)
         print(f"[Step 1] Epoch {epoch+1}: train_loss={train_loss:.4f}, train_acc={train_acc:.4f} | val_loss={val_loss:.4f}, val_acc={val_acc:.4f}")
 
-    # --- Step 2: Unfreeze text encoder only ---
+    # Step 2: Unfreeze text encoder only 
     for param in model.text_encoder.parameters():
         param.requires_grad = True
 
@@ -433,7 +267,7 @@ if __name__ == "__main__":
         val_accs.append(val_acc)
         print(f"[Step 2] Epoch {epoch+1}: train_loss={train_loss:.4f}, train_acc={train_acc:.4f} | val_loss={val_loss:.4f}, val_acc={val_acc:.4f}")
 
-    # --- Step 3: Unfreeze vision encoder ---
+    # Step 3: Unfreeze vision encoder 
     for param in model.vision_encoder.parameters():
         param.requires_grad = True
 
@@ -446,7 +280,7 @@ if __name__ == "__main__":
 
 
     # Continue fine-tuning for remaining epochs
-    for epoch in range(5):  # or as needed
+    for epoch in range(5): 
         train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion, device)
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
 
