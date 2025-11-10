@@ -6,6 +6,8 @@ fakeddit_dataset/text
 fakeddit_dataset/text_100
 fakeddit_dataset/text_my
 
+own_model/checkpoints/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

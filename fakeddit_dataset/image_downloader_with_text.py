@@ -7,8 +7,8 @@ import random
 import re
 
 FILE_NAME = 'data/multimodal_test_public.tsv'
-MAX_SAMPLES = 1000000000000
-START_IDX = 41315+5418
+MAX_SAMPLES = 100
+START_IDX = 0
 
 df = pd.read_csv(FILE_NAME, sep="\t")
 df = df.fillna('')
@@ -60,7 +60,6 @@ def download_with_retry(url, filename, max_retries=2, backoff_factor=2, min_dela
     return False
 
 
-# --- Resume logic ---
 # Determine already downloaded images (to skip)
 downloaded_ids = {os.path.splitext(f)[0] for f in os.listdir("images") if f.endswith(".jpg")}
 
