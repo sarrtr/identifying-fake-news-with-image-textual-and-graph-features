@@ -4,35 +4,21 @@ from pytorch_grad_cam import GradCAM
 from pytorch_grad_cam.utils.image import show_cam_on_image
 import numpy as np
 from PIL import Image
-import io
 import os
+import torch.nn.functional as F
+import torch
 
 # -------------------------
 # Helper: try to find a good target layer in ViT encoder
 # -------------------------
-def get_vit_target_layer(image_encoder):
-    """
-    Попытка выбрать подходящий модуль-слой из HuggingFace ViTModel для GradCAM.
-    Возвращает модуль или бросает Exception.
-    """
-    # most common HF ViT layout: image_encoder.encoder.layer is ModuleList
-    try:
-        last_block = image_encoder.encoder.layer[-1]
-        # try some common members
-        candidates = [
-            getattr(last_block, 'output', None),
-            getattr(last_block, 'attention', None),
-            getattr(last_block, 'layer', None),
-            getattr(last_block, 'ffn', None),
-        ]
-        for c in candidates:
-            if c is not None:
-                return c
-        # fallback: return the last block itself
-        return last_block
-    except Exception as e:
-        raise RuntimeError(f"Не получилось найти target layer в ViT: {e}")
-
+def reshape_transform(tensor, height=14, width=14):
+    # Remove CLS token
+    result = tensor[:, 1:, :]  
+    # Reshape to (B, H, W, C)
+    result = result.reshape(result.size(0), height, width, -1)
+    # Permute to (B, C, H, W)
+    result = result.permute(0, 3, 1, 2)
+    return result
 # -------------------------
 # Wrapper model for GradCAM
 # -------------------------
@@ -118,12 +104,13 @@ def explain_image_with_lime_and_gradcam(model, tokenizer,
 
     # --- GradCAM ---
     # determine a target layer inside ViT
-    target_layer = get_vit_target_layer(model.image_encoder)
+    # target_layer = get_vit_target_layer(model.image_encoder)
+    target_layer = model.image_encoder.encoder.layer[-1].output
     # wrap multimodal model for GradCAM
     wrapper = MultiModalForCAM(model, input_ids.unsqueeze(0).to(device), attention_mask.unsqueeze(0).to(device))
     wrapper.to(device)
     # create GradCAM object
-    cam = GradCAM(model=wrapper, target_layers=[target_layer], use_cuda=(device=='cuda'))
+    cam = GradCAM(model=wrapper, target_layers=[target_layer], reshape_transform=reshape_transform)
     # input to CAM must be a tensor (B, C, H, W)
     with torch.no_grad():
         inp = image.unsqueeze(0).to(device)
@@ -182,20 +169,3 @@ def explain_image_with_lime_and_gradcam(model, tokenizer,
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         fig.savefig(save_path, bbox_inches='tight', dpi=200)
     return fig, {'pred_prob': probs[0].tolist(), 'pred_label': pred_label, 'grayscale_cam': grayscale_cam, 'lime_mask': mask}
-
-# -------------------------
-# Example: how to call for a sample from val_set
-# -------------------------
-# Пример использования (в конце скрипта или в evaluation notebook):
-#
-# sample_idx = val_idx[0]
-# input_ids, attention_mask, image, label = dataset[sample_idx]
-# fig, meta = explain_image_with_lime_and_gradcam(model, tokenizer,
-#                                                 input_ids, attention_mask, image,
-#                                                 transform_val, device=device,
-#                                                 lime_samples=300,
-#                                                 save_path='explanations/sample0.png')
-#
-# plt.show(fig)
-#
-# Примечание: LIME (num_samples ~ 200-1000) и GradCAM могут быть медленными на CPU.
