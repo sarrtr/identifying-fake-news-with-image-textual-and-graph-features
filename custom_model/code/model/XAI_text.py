@@ -3,8 +3,6 @@ import torch
 import numpy as np
 import gc
 
-explainer = LimeTextExplainer(class_names=['real', 'fake'])
-
 def lime_explain_text(sample_text, image_tensor, model, tokenizer, device='cuda', batch_size=8):
     """
     Explain text contribution in a multimodal model (text + fixed image).
@@ -54,6 +52,8 @@ def lime_explain_text(sample_text, image_tensor, model, tokenizer, device='cuda'
 
         return np.concatenate(probs_all, axis=0)
 
+    explainer = LimeTextExplainer(class_names=['real', 'fake'])
+    
     # LIME explanation (this still runs on CPU)
     exp = explainer.explain_instance(
         sample_text,

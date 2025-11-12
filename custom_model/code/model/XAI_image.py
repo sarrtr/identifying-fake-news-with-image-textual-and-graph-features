@@ -8,9 +8,6 @@ import os
 import torch.nn.functional as F
 import torch
 
-# -------------------------
-# Helper: try to find a good target layer in ViT encoder
-# -------------------------
 def reshape_transform(tensor, height=14, width=14):
     # Remove CLS token
     result = tensor[:, 1:, :]  
@@ -168,4 +165,5 @@ def explain_image_with_lime_and_gradcam(model, tokenizer,
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         fig.savefig(save_path, bbox_inches='tight', dpi=200)
+        
     return fig, {'pred_prob': probs[0].tolist(), 'pred_label': pred_label, 'grayscale_cam': grayscale_cam, 'lime_mask': mask}
