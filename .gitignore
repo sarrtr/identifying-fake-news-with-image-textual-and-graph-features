@@ -5,8 +5,10 @@ fakeddit_dataset/images_my
 fakeddit_dataset/text
 fakeddit_dataset/text_100
 fakeddit_dataset/text_my
+datasets/fakeddit_dataset/images_sampled
+datasets/fakeddit_dataset/text_sampled
 
-custom_model/checkpoints/*
+custom_model/models/checkpoints/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
