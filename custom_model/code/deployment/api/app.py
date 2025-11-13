@@ -29,36 +29,44 @@ def pil_to_tensor(pil_img):
     Применяет transform_val (PIL->Tensor->Normalize) и возвращает tensor (C,H,W)
     """
     return transform_val(pil_img).detach()
-
-def tensor_to_base64_png(tensor_image):
+def tensor_to_base64_jpg(tensor_image):
     """
     tensor_image: HxWx3 float 0..1 or uint8 HxWx3
-    возвращает base64 строки PNG
+    возвращает base64 строки JPEG
     """
-    import matplotlib.pyplot as plt
     import io
     from PIL import Image
-    arr = tensor_image
-    if isinstance(arr, np.ndarray):
-        img_arr = arr
-    else:
-        img_arr = arr
-    # ensure uint8 HWC
-    if img_arr.dtype == np.float32 or img_arr.dtype == np.float64:
-        img_arr = (np.clip(img_arr, 0, 1) * 255).astype('uint8')
-    im = Image.fromarray(img_arr)
-    buf = io.BytesIO()
-    im.save(buf, format='PNG')
-    b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
-    return f"data:image/png;base64,{b64}"
+    import numpy as np
+    import base64
 
-def fig_to_base64(fig):
-    import io
+    arr = tensor_image
+    if not isinstance(arr, np.ndarray):
+        arr = np.array(arr)
+
+    # ensure uint8 HWC
+    if arr.dtype in (np.float32, np.float64):
+        arr = (np.clip(arr, 0, 1) * 255).astype('uint8')
+
+    # ensure RGB
+    im = Image.fromarray(arr).convert("RGB")
+
     buf = io.BytesIO()
-    fig.savefig(buf, format='png', bbox_inches='tight', dpi=150)
+    im.save(buf, format='JPEG', quality=90)
+    b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
+    return f"data:image/jpeg;base64,{b64}"
+
+
+def fig_to_base64_jpg(fig):
+    """
+    Convert a Matplotlib figure to base64-encoded JPEG image.
+    """
+    import io, base64
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format='jpeg', bbox_inches='tight', dpi=150)
     buf.seek(0)
     b64 = base64.b64encode(buf.read()).decode('utf-8')
-    return f"data:image/png;base64,{b64}"
+    return f"data:image/jpeg;base64,{b64}"
 
 # -------- API models --------
 class PredictResponse(BaseModel):
@@ -139,7 +147,7 @@ async def predict(
     )
     # convert fig -> base64
     try:
-        gradcam_b64 = fig_to_base64(fig)
+        gradcam_b64 = fig_to_base64_jpg(fig)
     except Exception:
         # fallback: if fig not available, return empty
         gradcam_b64 = ""

@@ -7,6 +7,10 @@ from torchvision import transforms
 import torch.nn.functional as F
 from transformers import ViTModel
 from transformers import BertTokenizer, BertModel
+
+model_path = "/repo/project_deepfake/project/custom_model/models/multimodal_model.pth"
+tokenizer_path = "/repo/project_deepfake/project/custom_model/models/checkpoints/tokenizer"
+
 class CrossAttentionBlock(nn.Module):
     def __init__(self, dim_q, dim_k, num_heads=8):
         super().__init__()
@@ -83,7 +87,7 @@ class SymmetricMultimodalClassifier(nn.Module):
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+tokenizer = BertTokenizer.from_pretrained(tokenizer_path)
 
 transform_val = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -94,6 +98,6 @@ transform_val = transforms.Compose([
 
 # model = SymmetricMultimodalClassifier()
 # model.load_state_dict(torch.load("multimodal_model.pth", map_location=device, weights_only=False))
-model = torch.load("multimodal_model.pth", map_location=device)
+model = torch.load(model_path, map_location=device)
 model.to(device)
 model.eval()
