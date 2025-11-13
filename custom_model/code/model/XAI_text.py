@@ -59,7 +59,8 @@ def lime_explain_text(sample_text, image_tensor, model, tokenizer, device='cuda'
         sample_text,
         wrapped_predict,
         num_features=10,
-        labels=(0, 1)
+        labels=(0, 1),
+        num_samples=50
     )
 
     return exp

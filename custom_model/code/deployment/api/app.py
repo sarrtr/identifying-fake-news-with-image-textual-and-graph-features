@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from PIL import Image
 import numpy as np
 import torch
+import time
 
 from model_utils import model, tokenizer, transform_val, device
 from XAI_image import explain_image_with_lime_and_gradcam
@@ -90,6 +91,7 @@ async def predict(
     Возвращает: оригинал, label, confidence, LIME text (list + html),
     Grad-CAM image и LIME overlay image (base64 strings).
     """
+    start = time.time()
     # 1) Read image
     contents = await image.read()
     pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
@@ -120,10 +122,12 @@ async def predict(
         pred_label_idx = int(np.argmax(probs))
         confidence = float(probs[pred_label_idx])
         label_str = "fake" if pred_label_idx == 1 else "real"
+    print('model eval finished', time.time() - start)
 
     # 5) XAI: LIME for text (returns exp object)
     # lime_explain_text given in prompt returns an Explanation object `exp`
     exp_obj = lime_explain_text(text, image_tensor, model, tokenizer, device=device, batch_size=8)
+    print('lime_explain_text finished', time.time() - start)
     # produce list and html
     lime_list = exp_obj.as_list()  # list[(token, weight), ...]
     try:
@@ -145,6 +149,7 @@ async def predict(
         top_label=pred_label_idx,
         save_path=None
     )
+    print('explain_image_with_lime_and_gradcam finished', time.time() - start)
     # convert fig -> base64
     try:
         gradcam_b64 = fig_to_base64_jpg(fig)
@@ -154,6 +159,31 @@ async def predict(
     # lime_overlay: meta contains 'lime_mask' and LIME overlay saved as return; but our function returned 'lime_mask' and had overlay in variable lime_overlay.
     # For simplicity, regenerate a PNG from fig's 3rd panel: we already saved entire fig -> gradcam_b64; reuse for both fields.
     lime_overlay_b64 = gradcam_b64
+
+    # # 5–6) Skip heavy XAI computation and return mock data for testing
+    # lime_list = [
+    #     ("fake", 0.82),
+    #     ("news", 0.45),
+    #     ("headline", -0.23),
+    # ]
+    # lime_html = """
+    # <div style='font-family: monospace'>
+    # <span style='background-color: #aaf'>fake</span>
+    # <span style='background-color: #afa'>news</span>
+    # <span style='background-color: #faa'>headline</span>
+    # </div>
+    # """
+
+    # # A small gray 1x1 pixel encoded as base64 (valid placeholder image)
+    # gray_pixel = base64.b64encode(
+    #     b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C'
+    #     b'\x00' + bytes([128]*64) + 
+    #     b'\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01"\x00\x02\x11\x01\x03\x11\x01'
+    #     b'\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\xd2\xcf \xff\xd9'
+    # ).decode('utf-8')
+    # gradcam_b64 = f"data:image/jpeg;base64,{gray_pixel}"
+    # lime_overlay_b64 = gradcam_b64
+
 
     # free memory
     del images_batch, input_ids_b, attention_mask_b, logits

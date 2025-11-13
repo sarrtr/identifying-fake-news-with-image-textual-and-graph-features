@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from transformers import ViTModel
 from transformers import BertTokenizer, BertModel
 
-model_path = "/repo/project_deepfake/project/custom_model/models/multimodal_model.pth"
+model_path = "/repo/project_deepfake/project/custom_model/models/checkpoints/multimodal_model.pth"
 tokenizer_path = "/repo/project_deepfake/project/custom_model/models/checkpoints/tokenizer"
 
 class CrossAttentionBlock(nn.Module):
@@ -98,6 +98,11 @@ transform_val = transforms.Compose([
 
 # model = SymmetricMultimodalClassifier()
 # model.load_state_dict(torch.load("multimodal_model.pth", map_location=device, weights_only=False))
+import __main__ as main
+main.SymmetricMultimodalClassifier = SymmetricMultimodalClassifier
+main.AttentionPool = AttentionPool
+main.CrossAttentionBlock = CrossAttentionBlock
+
 model = torch.load(model_path, map_location=device)
 model.to(device)
 model.eval()

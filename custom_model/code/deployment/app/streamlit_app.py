@@ -5,7 +5,7 @@ import base64
 import os
 import streamlit.components.v1 as components
 
-API_URL = os.environ.get("API_URL", "http://0.0.0.0:8000")
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 st.set_page_config(page_title="Multimodal Fake News Detector", layout="centered")
 
@@ -28,7 +28,7 @@ if submitted:
         data = {"text": text, "lime_samples": str(lime_samples)}
         with st.spinner("Sending to backend and waiting for results..."):
             try:
-                resp = requests.post(API_URL, data=data, files=files, timeout=120)
+                resp = requests.post(API_URL+'/predict', data=data, files=files, timeout=600)
                 resp.raise_for_status()
             except Exception as e:
                 st.error(f"Request failed: {e}")
@@ -46,7 +46,7 @@ if submitted:
         st.markdown(f"**{label.upper()}**  (confidence: {confidence:.3f})")
 
         # show original uploaded image
-        st.image(uploaded_file, caption="Uploaded image", use_column_width=True)
+        st.image(uploaded_file, caption="Uploaded image", use_container_width=True)
 
         # Show XAI outputs
         st.subheader("Text explanation (LIME)")
@@ -67,7 +67,7 @@ if submitted:
             # decode and show
             header, b64 = gradcam_b64.split(",", 1) if gradcam_b64.startswith("data:") else (None, gradcam_b64)
             img_bytes = base64.b64decode(b64)
-            st.image(img_bytes, caption="Grad-CAM + LIME overlay (combined view)", use_column_width=True)
+            st.image(img_bytes, caption="Grad-CAM + LIME overlay (combined view)", use_container_width=True)
         else:
             st.write("No image explanation returned.")
 

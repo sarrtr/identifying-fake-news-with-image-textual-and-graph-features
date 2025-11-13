@@ -7,6 +7,7 @@ from PIL import Image
 import os
 import torch.nn.functional as F
 import torch
+import torch.nn as nn
 
 def reshape_transform(tensor, height=14, width=14):
     # Remove CLS token
@@ -77,7 +78,7 @@ def explain_image_with_lime_and_gradcam(model, tokenizer,
                                         input_ids, attention_mask, image_tensor,
                                         transform_val,
                                         device='cuda',
-                                        lime_samples=200,
+                                        lime_samples=50,
                                         top_label=None,
                                         save_path=None):
     """
@@ -134,8 +135,8 @@ def explain_image_with_lime_and_gradcam(model, tokenizer,
         classifier_fn=predict_fn,
         top_labels=2,
         hide_color=0,
-        num_samples=lime_samples,
-        segmentation_fn=lambda x: slic(x, n_segments=50, compactness=10)  # faster/better segmentation
+        num_samples=lime_samples,          
+        segmentation_fn=lambda x: slic(x, n_segments=25, compactness=5)  # faster/better segmentation
     )
     # choose label to visualize
     label_to_vis = target_category
