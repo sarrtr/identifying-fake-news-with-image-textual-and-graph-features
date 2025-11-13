@@ -6,8 +6,6 @@ RUN pip install fastapi uvicorn[standard] python-multipart pillow torchvision tr
 
 COPY ./code/deployment/api /app
 COPY ./models /app
-
-COPY ./code/model/train.py /app
 COPY ./code/model/XAI_image.py /app
 COPY ./code/model/XAI_text.py /app
 COPY ./code/model/model_utils.py /app
