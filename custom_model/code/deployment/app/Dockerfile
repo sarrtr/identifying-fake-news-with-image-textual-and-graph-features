@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-RUN pip install streamlit requests numpy
+RUN pip install --no-cache-dir streamlit requests numpy
 
 COPY ./code/deployment/app /app
 

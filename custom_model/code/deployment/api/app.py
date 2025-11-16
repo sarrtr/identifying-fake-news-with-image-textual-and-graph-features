@@ -160,31 +160,6 @@ async def predict(
     # For simplicity, regenerate a PNG from fig's 3rd panel: we already saved entire fig -> gradcam_b64; reuse for both fields.
     lime_overlay_b64 = gradcam_b64
 
-    # # 5–6) Skip heavy XAI computation and return mock data for testing
-    # lime_list = [
-    #     ("fake", 0.82),
-    #     ("news", 0.45),
-    #     ("headline", -0.23),
-    # ]
-    # lime_html = """
-    # <div style='font-family: monospace'>
-    # <span style='background-color: #aaf'>fake</span>
-    # <span style='background-color: #afa'>news</span>
-    # <span style='background-color: #faa'>headline</span>
-    # </div>
-    # """
-
-    # # A small gray 1x1 pixel encoded as base64 (valid placeholder image)
-    # gray_pixel = base64.b64encode(
-    #     b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00\xff\xdb\x00C'
-    #     b'\x00' + bytes([128]*64) + 
-    #     b'\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01"\x00\x02\x11\x01\x03\x11\x01'
-    #     b'\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11\x00?\x00\xd2\xcf \xff\xd9'
-    # ).decode('utf-8')
-    # gradcam_b64 = f"data:image/jpeg;base64,{gray_pixel}"
-    # lime_overlay_b64 = gradcam_b64
-
-
     # free memory
     del images_batch, input_ids_b, attention_mask_b, logits
     torch.cuda.empty_cache()

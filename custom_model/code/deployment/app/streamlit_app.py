@@ -5,7 +5,7 @@ import base64
 import os
 import streamlit.components.v1 as components
 
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+API_URL = os.environ.get("API_URL", "http://0.0.0.0:8000")
 
 st.set_page_config(page_title="Multimodal Fake News Detector", layout="centered")
 
