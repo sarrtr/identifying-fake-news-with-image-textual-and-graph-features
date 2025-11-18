@@ -5,75 +5,74 @@ from pytorch_grad_cam.utils.image import show_cam_on_image
 import numpy as np
 from PIL import Image
 import os
-import torch.nn.functional as F
 import torch
 import torch.nn as nn
 
 def reshape_transform(tensor, height=14, width=14):
-    # Remove CLS token
+    """
+    Transform ViT encoder output for GradCAM compatibility
+    Removes CLS token and reshapes to standard CNN feature map format
+    Converts from transformer sequence to spatial dimensions
+    """
+    # Remove CLS token from transformer output
     result = tensor[:, 1:, :]  
-    # Reshape to (B, H, W, C)
+    # Reshape to (B, height, width, channels) format
     result = result.reshape(result.size(0), height, width, -1)
-    # Permute to (B, C, H, W)
+    # Permute to standard PyTorch (B, C, H, W) format
     result = result.permute(0, 3, 1, 2)
     return result
-# -------------------------
-# Wrapper model for GradCAM
-# -------------------------
+
 class MultiModalForCAM(nn.Module):
     """
-    Обёртка, принимающая на вход только images и возвращающая logits,
-    при этом использует фиксированный текст (input_ids, attention_mask).
-    Это позволяет grad-cam получить градиенты по слоям image_encoder,
-    но считать цель (target) относительно финального logit'а мульти-модальной модели.
+    Wrapper model for GradCAM that fixes text inputs and only varies images
+    Enables gradient computation through image encoder while using constant text context
+    Essential for visualizing which image regions influence multimodal predictions
     """
     def __init__(self, full_model, fixed_input_ids, fixed_attention_mask):
         super().__init__()
         self.full_model = full_model
-        # make sure fixed inputs are detached and on the correct device when used
+        # Store fixed text inputs as buffers for device compatibility
         self.register_buffer('fixed_input_ids', fixed_input_ids.squeeze(0))
         self.register_buffer('fixed_attention_mask', fixed_attention_mask.squeeze(0))
 
     def forward(self, images):
-        # images: tensor (B, C, H, W)
-        # repeat fixed text for batch
+        # Repeat fixed text inputs to match image batch size
         batch_size = images.shape[0]
         input_ids = self.fixed_input_ids.unsqueeze(0).repeat(batch_size, 1)
         attention_mask = self.fixed_attention_mask.unsqueeze(0).repeat(batch_size, 1)
+        # Forward pass through multimodal model with fixed text and variable images
         logits, *_ = self.full_model(input_ids=input_ids, attention_mask=attention_mask, images=images)
         return logits
 
-# -------------------------
-# LIME predict wrapper for images (multimodal)
-# -------------------------
 def make_lime_predict_fn(model, input_ids, attention_mask, transform_val, device):
     """
-    Вернёт функцию pred_fn(images_np) -> probs_numpy (N x num_classes).
-    images_np: array (N, H, W, 3), dtype uint8 (0..255) (как LIME выдаёт).
-    Использует transform_val (PIL->tensor->normalize) и фиксированный текст.
+    Creates prediction function for LIME image explainer
+    Converts LIME's numpy arrays to model-compatible tensor format
+    Maintains fixed text context while perturbing image inputs for local explanations
     """
     def pred_fn(images_np):
         model.eval()
         tensors = []
+        # Convert each numpy array in batch to preprocessed tensor
         for im in images_np:
-            # im: HWC, uint8
+            # Convert numpy array to PIL Image for consistent preprocessing
             pil = Image.fromarray(im.astype('uint8'), 'RGB')
-            x = transform_val(pil).unsqueeze(0)  # 1, C, H, W
+            # Apply same transforms as validation pipeline
+            x = transform_val(pil).unsqueeze(0)
             tensors.append(x)
-        batch = torch.cat(tensors, dim=0).to(device)  # (N, C, H, W)
-        # prepare text inputs (repeat)
+        # Combine all processed images into single batch tensor
+        batch = torch.cat(tensors, dim=0).to(device)
+        # Prepare repeated text inputs for batch
         b = batch.shape[0]
         ids = input_ids.unsqueeze(0).repeat(b,1).to(device)
         mask = attention_mask.unsqueeze(0).repeat(b,1).to(device)
+        # Get model predictions and convert to probabilities
         with torch.no_grad():
             logits, *_ = model(ids, mask, batch)
             probs = torch.softmax(logits, dim=1).cpu().numpy()
         return probs
     return pred_fn
 
-# -------------------------
-# Main explain function: runs GradCAM + LIME and plots/saves results
-# -------------------------
 def explain_image_with_lime_and_gradcam(model, tokenizer,
                                         input_ids, attention_mask, image_tensor,
                                         transform_val,
@@ -82,87 +81,90 @@ def explain_image_with_lime_and_gradcam(model, tokenizer,
                                         top_label=None,
                                         save_path=None):
     """
-    input_ids, attention_mask: tensors for the text (1, seq_len) or (seq_len,)
-    image_tensor: (C, H, W) tensor (unnormalized? assume already normalized as used by model)
-    transform_val: pipeline used in validation (PIL->Tensor->Normalize) for LIME preprocessing
-    lime_samples: number of perturbed samples for LIME
-    top_label: int or None (if None, use predicted label)
-    save_path: если указан, сохраняет картинку
-    Возвращает matplotlib.Figure
+    Main explanation function combining Grad-CAM and LIME for multimodal image analysis
+    Generates both gradient-based and perturbation-based explanations for model decisions
+    Returns visualization figure and explanation metadata for further analysis
     """
     model.eval()
+    # Prepare image tensor on correct device
     image = image_tensor.clone().detach().to(device)
-    # prepare original image in HWC 0..1 for show_cam_on_image
-    # undo normalization if transform_val uses Normalize with ImageNet mean/std
-    # We'll try to reconstruct 0..1 image from normalized tensor:
+    
+    # Reverse normalization to reconstruct original image for visualization
     mean = np.array([0.485, 0.456, 0.406])
     std  = np.array([0.229, 0.224, 0.225])
-    im_np = image.cpu().numpy().transpose(1,2,0)  # HWC but normalized
-    im_01 = (im_np * std + mean).clip(0,1)  # approximate original normalized to 0..1
+    im_np = image.cpu().numpy().transpose(1,2,0)
+    im_01 = (im_np * std + mean).clip(0,1)
 
-    # --- GradCAM ---
-    # determine a target layer inside ViT
-    # target_layer = get_vit_target_layer(model.image_encoder)
+    # --- Grad-CAM Explanation ---
+    # Select target layer from ViT encoder for gradient computation
     target_layer = model.image_encoder.encoder.layer[-1].output
-    # wrap multimodal model for GradCAM
+    # Create wrapper model for Grad-CAM with fixed text inputs
     wrapper = MultiModalForCAM(model, input_ids.unsqueeze(0).to(device), attention_mask.unsqueeze(0).to(device))
     wrapper.to(device)
-    # create GradCAM object
+    # Initialize Grad-CAM explainer with ViT reshape transformation
     cam = GradCAM(model=wrapper, target_layers=[target_layer], reshape_transform=reshape_transform)
-    # input to CAM must be a tensor (B, C, H, W)
+    
+    # Get model prediction for target category selection
     with torch.no_grad():
         inp = image.unsqueeze(0).to(device)
-    # optionally compute target category: top_label or predicted
-    with torch.no_grad():
         logits, *_ = model(input_ids=input_ids.unsqueeze(0).to(device),
                            attention_mask=attention_mask.unsqueeze(0).to(device),
                            images=inp)
         probs = torch.softmax(logits, dim=1).cpu().numpy()
         pred_label = int(probs.argmax(axis=1)[0])
+    
+    # Determine target category for explanation
     target_category = pred_label if top_label is None else int(top_label)
+    # Generate Grad-CAM heatmap
+    grayscale_cam = cam(input_tensor=inp, targets=None)[0]
+    # Overlay heatmap on original image
+    cam_image = show_cam_on_image(im_01, grayscale_cam, use_rgb=True)
 
-    grayscale_cam = cam(input_tensor=inp, targets=None)[0]  # HxW
-    cam_image = show_cam_on_image(im_01, grayscale_cam, use_rgb=True)  # uint8 HxW3
-
-    # --- LIME (image) ---
+    # --- LIME Explanation ---
+    # Initialize LIME image explainer
     explainer = lime_image.LimeImageExplainer()
+    # Create prediction function with fixed text context
     predict_fn = make_lime_predict_fn(model, input_ids, attention_mask, transform_val, device)
-    # lime wants HWC uint8 0..255
+    # Convert image to uint8 format for LIME processing
     im_for_lime = (im_01 * 255).astype('uint8')
-    # run explain_instance (this is relatively heavy)
+    # Generate LIME explanation using superpixel segmentation
     explanation = explainer.explain_instance(
         im_for_lime,
         classifier_fn=predict_fn,
         top_labels=2,
         hide_color=0,
         num_samples=lime_samples,          
-        segmentation_fn=lambda x: slic(x, n_segments=25, compactness=5)  # faster/better segmentation
+        segmentation_fn=lambda x: slic(x, n_segments=25, compactness=5)
     )
-    # choose label to visualize
-    label_to_vis = target_category
-    temp, mask = explanation.get_image_and_mask(label_to_vis,
+    # Extract LIME mask for target category
+    temp, mask = explanation.get_image_and_mask(target_category,
                                                 positive_only=False,
                                                 num_features=10,
                                                 hide_rest=False)
-    # temp: HxWx3 uint8 with highlighted superpixels
     lime_overlay = temp
 
-    # --- plot side-by-side ---
+    # --- Visualization ---
     import matplotlib.pyplot as plt
+    # Create three-panel comparison figure
     fig, axes = plt.subplots(1, 3, figsize=(15,5))
+    
+    # Original image panel
     axes[0].imshow((im_01.clip(0,1)))
-    axes[0].set_title('Original (approx)')
+    axes[0].set_title('Original')
     axes[0].axis('off')
 
+    # Grad-CAM explanation panel
     axes[1].imshow(cam_image)
     axes[1].set_title(f'Grad-CAM (pred={pred_label})')
     axes[1].axis('off')
 
+    # LIME explanation panel
     axes[2].imshow(lime_overlay)
     axes[2].set_title('LIME overlay')
     axes[2].axis('off')
 
     plt.tight_layout()
+    # Save figure if path provided
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         fig.savefig(save_path, bbox_inches='tight', dpi=200)

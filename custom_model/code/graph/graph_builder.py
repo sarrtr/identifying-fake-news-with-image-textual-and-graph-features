@@ -7,9 +7,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sentence_transformers import SentenceTransformer
 from PIL import Image, ImageFile
 import torch
-from torchvision import transforms
 import warnings
-import random
 warnings.filterwarnings('ignore')
 
 # Allow loading of truncated images
@@ -568,12 +566,12 @@ class ImageTitleGraphGenerator:
 
 def main():
     # Configuration
-    TEXT_FILE_PATH = "text/text.txt"
-    IMAGES_FOLDER_PATH = "images"
+    TEXT_FILE_PATH = "dataset/text/text.txt"
+    IMAGES_FOLDER_PATH = "dataset/images"
     INPUT_IMAGE_PATH = "input_image.jpg"
     INPUT_TEXT_PATH = "input_text.txt"
-    SIMILARITY_THRESHOLD = 0.4  # Adjust this based on your needs
-    SAMPLE_SIZE = 1500  # Set to None to use all data, or specify a number for sampling
+    SIMILARITY_THRESHOLD = 0.4
+    SAMPLE_SIZE = 1500
     
     # Initialize graph generator
     generator = ImageTitleGraphGenerator(

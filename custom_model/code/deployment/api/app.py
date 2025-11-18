@@ -1,5 +1,4 @@
 import io
-import base64
 import gc
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form
@@ -17,6 +16,7 @@ from XAI_text import lime_explain_text
 
 app = FastAPI()
 
+# Configure CORS to allow cross-origin requests from any domain
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,13 +27,15 @@ app.add_middleware(
 
 def pil_to_tensor(pil_img):
     """
-    Применяет transform_val (PIL->Tensor->Normalize) и возвращает tensor (C,H,W)
+    Convert PIL image to preprocessed tensor using validation transforms
+    Returns tensor in (C,H,W) format ready for model input
     """
     return transform_val(pil_img).detach()
+
 def tensor_to_base64_jpg(tensor_image):
     """
-    tensor_image: HxWx3 float 0..1 or uint8 HxWx3
-    возвращает base64 строки JPEG
+    Convert tensor image to base64-encoded JPEG string
+    Handles both float (0-1) and uint8 tensors, ensures RGB format
     """
     import io
     from PIL import Image
@@ -44,22 +46,23 @@ def tensor_to_base64_jpg(tensor_image):
     if not isinstance(arr, np.ndarray):
         arr = np.array(arr)
 
-    # ensure uint8 HWC
+    # Normalize float tensors to uint8 range
     if arr.dtype in (np.float32, np.float64):
         arr = (np.clip(arr, 0, 1) * 255).astype('uint8')
 
-    # ensure RGB
+    # Convert to PIL Image and ensure RGB format
     im = Image.fromarray(arr).convert("RGB")
 
+    # Encode to JPEG and convert to base64
     buf = io.BytesIO()
     im.save(buf, format='JPEG', quality=90)
     b64 = base64.b64encode(buf.getvalue()).decode('utf-8')
     return f"data:image/jpeg;base64,{b64}"
 
-
 def fig_to_base64_jpg(fig):
     """
-    Convert a Matplotlib figure to base64-encoded JPEG image.
+    Convert matplotlib figure to base64-encoded JPEG image
+    Uses high DPI and tight bounding box for quality output
     """
     import io, base64
 
@@ -69,17 +72,16 @@ def fig_to_base64_jpg(fig):
     b64 = base64.b64encode(buf.read()).decode('utf-8')
     return f"data:image/jpeg;base64,{b64}"
 
-# -------- API models --------
+# Response model for prediction endpoint
 class PredictResponse(BaseModel):
     text: str
     label: str
     confidence: float
     lime_text_list: list
     lime_text_html: str
-    gradcam_image: str   # base64 png
-    lime_image_overlay: str  # base64 png
+    gradcam_image: str
+    lime_image_overlay: str
 
-# -------- endpoints --------
 @app.post("/predict", response_model=PredictResponse)
 async def predict(
     text: str = Form(...),
@@ -87,19 +89,20 @@ async def predict(
     lime_samples: Optional[int] = Form(200)
 ):
     """
-    Принимает текст (form field) и изображение (form file).
-    Возвращает: оригинал, label, confidence, LIME text (list + html),
-    Grad-CAM image и LIME overlay image (base64 strings).
+    Main prediction endpoint for multimodal fake news detection
+    Accepts text content and image file, returns prediction with XAI explanations
+    Includes LIME text analysis, Grad-CAM and LIME image explanations
     """
     start = time.time()
-    # 1) Read image
+    
+    # Read and process uploaded image
     contents = await image.read()
     pil_img = Image.open(io.BytesIO(contents)).convert("RGB")
 
-    # 2) Preprocess image into tensor as your model expects
-    image_tensor = pil_to_tensor(pil_img)  # (C,H,W)
-    # Ensure on CPU for LIME wrapper; functions expect to push to device internally.
-    # 3) Tokenize text for model -> input_ids, attention_mask
+    # Convert PIL image to preprocessed tensor
+    image_tensor = pil_to_tensor(pil_img)
+
+    # Tokenize input text for model processing
     enc = tokenizer(
         text,
         padding='max_length',
@@ -110,33 +113,31 @@ async def predict(
     input_ids = enc['input_ids'].squeeze(0)
     attention_mask = enc['attention_mask'].squeeze(0)
 
-    # 4) Run model prediction (single forward)
+    # Run model inference to get prediction
     model.eval()
     with torch.no_grad():
-        # expand image batch dim
+        # Prepare batch inputs for model
         images_batch = image_tensor.unsqueeze(0).to(device)
         input_ids_b = input_ids.unsqueeze(0).to(device)
         attention_mask_b = attention_mask.unsqueeze(0).to(device)
+        
+        # Get model predictions and convert to probabilities
         logits, *_ = model(input_ids=input_ids_b, attention_mask=attention_mask_b, images=images_batch)
         probs = torch.softmax(logits, dim=1).cpu().numpy()[0]
         pred_label_idx = int(np.argmax(probs))
         confidence = float(probs[pred_label_idx])
         label_str = "fake" if pred_label_idx == 1 else "real"
-    print('model eval finished', time.time() - start)
+    print('Model evaluation completed in', time.time() - start, 'seconds')
 
-    # 5) XAI: LIME for text (returns exp object)
-    # lime_explain_text given in prompt returns an Explanation object `exp`
+    # Generate LIME explanations for text
     exp_obj = lime_explain_text(text, image_tensor, model, tokenizer, device=device, batch_size=8)
-    print('lime_explain_text finished', time.time() - start)
-    # produce list and html
-    lime_list = exp_obj.as_list()  # list[(token, weight), ...]
-    try:
-        lime_html = exp_obj.as_html(label=pred_label_idx, predict_proba=True)
-    except Exception:
-        lime_html = ""
+    print('LIME text explanation completed in', time.time() - start, 'seconds')
+    
+    # Extract token weights and HTML visualization from LIME
+    lime_list = exp_obj.as_list()
+    lime_html = exp_obj.as_html(labels=(pred_label_idx,))
 
-    # 6) XAI: explain_image_with_lime_and_gradcam
-    # This returns (fig, meta) where meta has pred_prob, pred_label, grayscale_cam, lime_mask
+    # Generate image explanations using LIME and Grad-CAM
     fig, meta = explain_image_with_lime_and_gradcam(
         model=model,
         tokenizer=tokenizer,
@@ -149,22 +150,21 @@ async def predict(
         top_label=pred_label_idx,
         save_path=None
     )
-    print('explain_image_with_lime_and_gradcam finished', time.time() - start)
-    # convert fig -> base64
+    print('Image explanation completed in', time.time() - start, 'seconds')
+    
+    # Convert explanation figures to base64 for web display
     try:
         gradcam_b64 = fig_to_base64_jpg(fig)
     except Exception:
-        # fallback: if fig not available, return empty
         gradcam_b64 = ""
-    # lime_overlay: meta contains 'lime_mask' and LIME overlay saved as return; but our function returned 'lime_mask' and had overlay in variable lime_overlay.
-    # For simplicity, regenerate a PNG from fig's 3rd panel: we already saved entire fig -> gradcam_b64; reuse for both fields.
     lime_overlay_b64 = gradcam_b64
 
-    # free memory
+    # Clean up memory to prevent GPU memory leaks
     del images_batch, input_ids_b, attention_mask_b, logits
     torch.cuda.empty_cache()
     gc.collect()
 
+    # Construct and return prediction response
     response = PredictResponse(
         text=text,
         label=label_str,
