@@ -10,6 +10,9 @@ datasets/fakeddit_dataset/text_sampled
 
 custom_model/models/checkpoints/*
 
+custom_model/code/graph/dataset/images/*
+custom_model/code/graph/dataset/text/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
