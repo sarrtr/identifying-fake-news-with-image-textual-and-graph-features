@@ -36,19 +36,24 @@ Prerequisits:
 
 Installation steps:
 1. Clone the repository.
+
 ``` git clone https://github.com/sarrtr/identifying-fake-news-with-image-textual-and-graph-features.git ```
 
-2. Download [model, tokenizer](https://drive.google.com/drive/folders/1Cbc4gG6F7qb28IgFBhNVgyWNncOtU6Tt, and [dataset for graph](https://drive.google.com/file/d/1rQw68yzZoa6cLwDNslyjT1rRwK2uGcyL/view).
-3. Put model and tokenizer to ```custom_model/models/checkpoints```, and folders 'images' and 'text' from archive to ```custom_model/code/graph/dataset```.
+2. Download [model, tokenizer](https://drive.google.com/drive/folders/1Cbc4gG6F7qb28IgFBhNVgyWNncOtU6Tt), and [dataset for graph](https://drive.google.com/file/d/1rQw68yzZoa6cLwDNslyjT1rRwK2uGcyL/view).
+3. Put model and tokenizer to custom_model/models/checkpoints, and folders 'images' and 'text' from archive to custom_model/code/graph/dataset.
 4. Run core app:
 
-``` cd custom_model/code/deployment
-docker-compose up --build ```
+```
+cd custom_model/code/deployment
+docker-compose up --build
+```
 
 5. Run graph builder:
 
-``` cd custom_model/code/graph
-python graph_builder.py ```
+```
+cd custom_model/code/graph
+python graph_builder.py 
+```
 
 ### Usage example
 
